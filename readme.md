@@ -4,4 +4,4 @@ A retrieval-augmented generation (RAG) system that lets users query French publi
 
 ## Demo
 
-<video src="rag show case.mp4" controls width="100%"></video>
+<video src="https://github.com/kndbvortex/rag-finance/raw/refs/heads/master/rag%20show%20case.mp4" controls width="100%"></video>
