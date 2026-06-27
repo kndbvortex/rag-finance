@@ -1,4 +1,4 @@
-# RAG Pipeline for French Public Administration Documents
+# RAG Pipeline for French Public Administration Documents related to finances and taxes
 
 A retrieval-augmented generation (RAG) system that lets users query French public administration documents through a conversational chat interface, powered by local LLMs and semantic search.
 
