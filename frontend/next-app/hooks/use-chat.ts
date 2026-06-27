@@ -8,14 +8,18 @@ export interface Citation {
   type_document: string
   annee_fiscale: number | null
   url: string
+  url_hash: string
   contient_tableaux: boolean
   content: string
+  page_start: number | null
+  page_end: number | null
 }
 
 export interface Message {
   role: "user" | "assistant"
   content: string
   citations: Citation[]
+  isError?: boolean
 }
 
 export function useChat() {
@@ -72,6 +76,15 @@ export function useChat() {
                 const updated = [...prev]
                 const last = { ...updated[updated.length - 1] }
                 last.citations = data.sources ?? []
+                updated[updated.length - 1] = last
+                return updated
+              })
+            } else if (data.type === "error") {
+              setMessages((prev) => {
+                const updated = [...prev]
+                const last = { ...updated[updated.length - 1] }
+                last.content = data.message
+                last.isError = true
                 updated[updated.length - 1] = last
                 return updated
               })

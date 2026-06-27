@@ -1,21 +1,53 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { HugeiconsIcon } from "@hugeicons/react"
+import {
+  ArrowUp02Icon,
+  ArrowReloadHorizontalIcon,
+  Building04Icon,
+  Copy01Icon,
+} from "@hugeicons/core-free-icons"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import { Button } from "@/components/ui/button"
-import { type Citation, type Message } from "@/hooks/use-chat"
+import {
+  Message,
+  MessageAvatar,
+  MessageContent,
+  MessageFooter,
+} from "@/components/ui/message"
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from "@/components/ui/message-scroller"
+import { type Citation, type Message as Msg } from "@/hooks/use-chat"
 import { cn } from "@/lib/utils"
 
+const AI_AVATAR = "/llama.webp"
+const USER_AVATAR = "https://v3.shadcn.com/avatars/02.png"
+
 interface Props {
-  messages: Message[]
+  messages: Msg[]
   isStreaming: boolean
   onSend: (question: string) => void
   onCitationClick: (citation: Citation, question: string) => void
 }
 
+const SUGGESTIONS = [
+  "Quel était le déficit public français en 2018 ?",
+  "Quelle est la trajectoire des prélèvements obligatoires par rapport au PIB ?",
+  "Qu'est-ce que la dotation instituée au profit des communes au 1er janvier 2024 ?",
+]
+
 function parseContent(
   content: string,
   citations: Citation[],
-  onCitationClick: (c: Citation) => void,
+  onCitationClick: (c: Citation) => void
 ) {
   const parts = content.split(/(\[Source \d+\])/g)
   return parts.map((part, i) => {
@@ -30,7 +62,7 @@ function parseContent(
             onClick={() => onCitationClick(citation)}
             className="mx-0.5 inline-flex items-baseline gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-700 transition-colors hover:bg-violet-200 dark:bg-violet-900/40 dark:text-violet-300 dark:hover:bg-violet-800/60"
           >
-            <span className="leading-none">↗</span>
+            <span className="text-[10px] leading-none">↗</span>
             {citation.institution.split(" ")[0]} {idx}
           </button>
         )
@@ -44,20 +76,25 @@ function parseContent(
   })
 }
 
-const SUGGESTIONS = [
-  "Quel est le budget de l'État pour 2026 ?",
-  "Quelles sont les recettes fiscales prévues ?",
-  "Comment évolue la dette publique ?",
-]
-
-export function ChatPanel({ messages, isStreaming, onSend, onCitationClick }: Props) {
+export function ChatPanel({
+  messages,
+  isStreaming,
+  onSend,
+  onCitationClick,
+}: Props) {
   const [input, setInput] = useState("")
-  const bottomRef = useRef<HTMLDivElement>(null)
   const lastQuestion = useRef("")
+  const [stats, setStats] = useState<{
+    documents: number
+    chunks: number
+  } | null>(null)
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
+    fetch("http://localhost:8000/api/v1/stats")
+      .then((r) => r.json())
+      .then(setStats)
+      .catch(() => null)
+  }, [])
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -70,84 +107,180 @@ export function ChatPanel({ messages, isStreaming, onSend, onCitationClick }: Pr
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-black/5 px-5 py-4 dark:border-white/5">
-        <div className="flex items-center gap-2.5">
-          <span className="flex size-7 items-center justify-center rounded-lg bg-gradient-to-br from-orange-400 to-violet-500 text-sm font-bold text-white shadow-sm">
-            R
-          </span>
+      {/* Header */}
+      <div className="border-b border-black/5 px-5 py-3.5 dark:border-white/5">
+        <div className="flex items-center gap-3">
+          <img
+            src="/logo.jpg"
+            alt="Logo"
+            className="h-9 w-auto rounded-lg object-contain"
+          />
           <div>
-            <h1 className="text-sm font-semibold tracking-tight">RAG · Finances publiques</h1>
+            <h1 className="text-sm font-semibold tracking-tight">
+              Finances publiques françaises
+            </h1>
             <p className="text-[11px] text-muted-foreground">
-              Assemblée Nationale · Sénat · Ministères
+              Impôts · Fiscalité · Documents officiels
             </p>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
-        {messages.length === 0 && (
-          <div className="flex h-full flex-col items-center justify-center gap-6 py-10">
-            <div className="text-center space-y-1">
-              <p className="text-sm font-medium text-foreground/80">
-                Interrogez les documents publics français
-              </p>
-              <p className="text-xs text-muted-foreground">
-                53 documents · 4 464 extraits indexés
-              </p>
-            </div>
-            <div className="flex flex-col gap-2 w-full max-w-sm">
-              {SUGGESTIONS.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => {
-                    lastQuestion.current = s
-                    onSend(s)
-                  }}
-                  className="rounded-xl border border-black/8 bg-white/60 px-4 py-2.5 text-left text-xs text-foreground/70 transition-colors hover:bg-white hover:text-foreground hover:shadow-sm dark:border-white/8 dark:bg-white/5 dark:hover:bg-white/10"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={cn("flex items-end gap-2", msg.role === "user" ? "justify-end" : "justify-start")}
-          >
-            {msg.role === "assistant" && (
-              <span className="mb-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-orange-400 to-violet-500 text-[9px] font-bold text-white">
-                R
-              </span>
-            )}
-            <div
-              className={cn(
-                "max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-relaxed",
-                msg.role === "user"
-                  ? "rounded-br-sm bg-slate-900 text-white dark:bg-slate-700"
-                  : "rounded-bl-sm bg-black/5 text-foreground dark:bg-white/8",
+      {/* Message list */}
+      <MessageScrollerProvider autoScroll scrollPreviousItemPeek={80}>
+        <MessageScroller className="flex-1">
+          <MessageScrollerViewport className="px-5 py-4">
+            <MessageScrollerContent>
+              {messages.length === 0 && (
+                <div className="flex h-full min-h-[300px] flex-col items-center justify-center gap-5">
+                  <div className="flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-100 to-violet-100 dark:from-slate-800 dark:to-slate-700">
+                    <HugeiconsIcon
+                      icon={Building04Icon}
+                      size={22}
+                      className="text-violet-500"
+                      strokeWidth={1.5}
+                    />
+                  </div>
+                  <div className="space-y-1 text-center">
+                    <p className="text-sm font-medium">
+                      Documents publics français
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {stats
+                        ? `${stats.documents} documents · ${stats.chunks.toLocaleString("fr-FR")} extraits indexés`
+                        : "Chargement…"}
+                    </p>
+                  </div>
+                  <div className="flex w-full max-w-sm flex-col gap-2">
+                    {SUGGESTIONS.map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => {
+                          lastQuestion.current = s
+                          onSend(s)
+                        }}
+                        className="rounded-xl border border-black/8 bg-white/60 px-4 py-2.5 text-left text-xs text-foreground/70 transition-colors hover:bg-white hover:text-foreground hover:shadow-sm dark:border-white/8 dark:bg-white/5 dark:hover:bg-white/10"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
-            >
-              {msg.role === "assistant" ? (
-                <>
-                  {parseContent(msg.content, msg.citations, (c) =>
-                    onCitationClick(c, lastQuestion.current),
-                  )}
-                  {isStreaming && i === messages.length - 1 && (
-                    <span className="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse bg-current opacity-60" />
-                  )}
-                </>
-              ) : (
-                msg.content
-              )}
-            </div>
-          </div>
-        ))}
-        <div ref={bottomRef} />
-      </div>
 
+              {messages.map((msg, i) => {
+                const isLastAssistant =
+                  msg.role === "assistant" && i === messages.length - 1
+                const isThinking =
+                  isLastAssistant && isStreaming && msg.content === ""
+
+                return (
+                  <MessageScrollerItem
+                    key={i}
+                    messageId={String(i)}
+                    scrollAnchor={msg.role === "user"}
+                  >
+                    <Message align={msg.role === "user" ? "end" : "start"}>
+                      <MessageAvatar>
+                        <Avatar className="size-8 rounded-lg">
+                          <AvatarImage
+                            src={
+                              msg.role === "assistant" ? AI_AVATAR : USER_AVATAR
+                            }
+                            alt={msg.role === "assistant" ? "AI" : "Vous"}
+                          />
+                          <AvatarFallback className="rounded-lg text-xs">
+                            {msg.role === "assistant" ? "AI" : "U"}
+                          </AvatarFallback>
+                        </Avatar>
+                      </MessageAvatar>
+
+                      <MessageContent>
+                        <Bubble
+                          variant={msg.role === "user" ? "default" : "ghost"}
+                          align={msg.role === "user" ? "end" : "start"}
+                        >
+                          <BubbleContent
+                            className={cn(
+                              msg.role === "user"
+                                ? "bg-slate-900 text-white dark:bg-slate-700"
+                                : msg.isError
+                                  ? "text-destructive"
+                                  : "text-foreground"
+                            )}
+                          >
+                            {msg.role === "assistant" ? (
+                              isThinking ? (
+                                <span className="shimmer text-muted-foreground shimmer-duration-1500">
+                                  Génération en cours…
+                                </span>
+                              ) : msg.isError ? (
+                                <span className="flex items-center gap-2">
+                                  <span>⚠</span>
+                                  {msg.content}
+                                </span>
+                              ) : (
+                                <>
+                                  {parseContent(
+                                    msg.content,
+                                    msg.citations,
+                                    (c) =>
+                                      onCitationClick(c, lastQuestion.current)
+                                  )}
+                                  {isStreaming && isLastAssistant && (
+                                    <span className="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse bg-current opacity-60" />
+                                  )}
+                                </>
+                              )
+                            ) : (
+                              msg.content
+                            )}
+                          </BubbleContent>
+                        </Bubble>
+                        {msg.isError && (
+                          <MessageFooter>
+                            <button
+                              onClick={() => onSend(lastQuestion.current)}
+                              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/8"
+                              aria-label="Réessayer"
+                            >
+                              <HugeiconsIcon
+                                icon={ArrowReloadHorizontalIcon}
+                                size={12}
+                                strokeWidth={2}
+                              />
+                              Réessayer
+                            </button>
+                            <button
+                              onClick={() =>
+                                navigator.clipboard.writeText(
+                                  lastQuestion.current
+                                )
+                              }
+                              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/8"
+                              aria-label="Copier la question"
+                            >
+                              <HugeiconsIcon
+                                icon={Copy01Icon}
+                                size={12}
+                                strokeWidth={2}
+                              />
+                              Copier
+                            </button>
+                          </MessageFooter>
+                        )}
+                      </MessageContent>
+                    </Message>
+                  </MessageScrollerItem>
+                )
+              })}
+            </MessageScrollerContent>
+          </MessageScrollerViewport>
+          <MessageScrollerButton />
+        </MessageScroller>
+      </MessageScrollerProvider>
+
+      {/* Input */}
       <form
         onSubmit={handleSubmit}
         className="border-t border-black/5 p-4 dark:border-white/5"
@@ -169,17 +302,7 @@ export function ChatPanel({ messages, isStreaming, onSend, onCitationClick }: Pr
             {isStreaming ? (
               <span className="size-3 animate-spin rounded-full border-2 border-white border-t-transparent dark:border-slate-900 dark:border-t-transparent" />
             ) : (
-              <svg
-                viewBox="0 0 16 16"
-                fill="none"
-                className="size-3.5"
-                stroke="currentColor"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M8 13V3M3 8l5-5 5 5" />
-              </svg>
+              <HugeiconsIcon icon={ArrowUp02Icon} size={14} strokeWidth={2.5} />
             )}
           </Button>
         </div>
