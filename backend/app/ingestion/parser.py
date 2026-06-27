@@ -10,6 +10,9 @@ logger = logging.getLogger(__name__)
 _SKIP = (Header, Footer, PageBreak, Image)
 _SCANNED_WORD_THRESHOLD = 50
 
+# (segment_text, page_number)
+Segment = tuple[str, int]
+
 
 def _partition(path: Path, strategy: str) -> list:
     return partition_pdf(
@@ -68,9 +71,9 @@ def _element_to_text(element) -> str:
     return element.text or ""
 
 
-def extract(path: Path) -> tuple[str, bool]:
+def extract(path: Path) -> tuple[list[Segment], bool]:
     """
-    Returns (full_text, has_tables).
+    Returns (segments, has_tables) where segments is a list of (text, page_number).
     Falls back to OCR if the fast pass yields almost no text.
     """
     try:
@@ -81,7 +84,7 @@ def extract(path: Path) -> tuple[str, bool]:
             elements = _partition(path, "ocr_only")
         except Exception:
             logger.error("all partition strategies failed for %s", path.name, exc_info=True)
-            return "", False
+            return [], False
 
     if _is_scanned(elements):
         logger.info("%s looks scanned, switching to ocr_only", path.name)
@@ -90,7 +93,7 @@ def extract(path: Path) -> tuple[str, bool]:
         except Exception:
             logger.warning("ocr_only failed for %s, using fast output", path.name, exc_info=True)
 
-    blocks: list[str] = []
+    segments: list[Segment] = []
     has_tables = False
 
     for el in elements:
@@ -99,7 +102,9 @@ def extract(path: Path) -> tuple[str, bool]:
         if isinstance(el, Table):
             has_tables = True
         text = _element_to_text(el).strip()
-        if text:
-            blocks.append(text)
+        if not text:
+            continue
+        page_num = getattr(getattr(el, "metadata", None), "page_number", None) or 1
+        segments.append((text, page_num))
 
-    return "\n\n".join(blocks), has_tables
+    return segments, has_tables

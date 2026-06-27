@@ -23,7 +23,10 @@ class SearchResult:
     type_document: str
     annee_fiscale: int | None
     url_origine: str
+    url_hash: str
     contient_tableaux: bool
+    page_start: int | None
+    page_end: int | None
 
 
 async def _vector_search(session: AsyncSession, vector: list[float], k: int) -> list[tuple[int, int]]:
@@ -73,8 +76,8 @@ def _rrf(
 async def _fetch(session: AsyncSession, chunk_ids: list[int]) -> list[SearchResult]:
     result = await session.execute(
         text("""
-            SELECT dc.id, dc.content, dc.contient_tableaux,
-                   d.source_institution, d.type_document, d.annee_fiscale, d.url
+            SELECT dc.id, dc.content, dc.contient_tableaux, dc.page_start, dc.page_end,
+                   d.source_institution, d.type_document, d.annee_fiscale, d.url, d.url_hash
             FROM document_chunks dc
             JOIN documents d ON d.id = dc.document_id
             WHERE dc.id = ANY(:ids)
@@ -91,7 +94,10 @@ async def _fetch(session: AsyncSession, chunk_ids: list[int]) -> list[SearchResu
             type_document=row.type_document,
             annee_fiscale=row.annee_fiscale,
             url_origine=row.url,
+            url_hash=row.url_hash,
             contient_tableaux=row.contient_tableaux,
+            page_start=row.page_start,
+            page_end=row.page_end,
         )
         for cid in chunk_ids
         if (row := rows.get(cid))

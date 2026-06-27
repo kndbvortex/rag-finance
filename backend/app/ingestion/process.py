@@ -25,16 +25,16 @@ async def _process_document(session: AsyncSession, doc: Document) -> int:
         return 0
 
     logger.info("parsing %s", path.name)
-    text, has_tables = await asyncio.to_thread(extract, path)
+    segments, has_tables = await asyncio.to_thread(extract, path)
 
-    if not text.strip():
+    if not segments:
         logger.warning("no text extracted from %s", path.name)
         return 0
 
-    chunks = chunk(text)
+    chunks = chunk(segments)
     logger.info("%d chunks from %s", len(chunks), path.name)
 
-    for i, (content, token_count) in enumerate(chunks):
+    for i, (content, token_count, page_start, page_end) in enumerate(chunks):
         session.add(
             DocumentChunk(
                 document_id=doc.id,
@@ -42,6 +42,8 @@ async def _process_document(session: AsyncSession, doc: Document) -> int:
                 chunk_index=i,
                 contient_tableaux=has_tables,
                 token_count=token_count,
+                page_start=page_start,
+                page_end=page_end,
             )
         )
 

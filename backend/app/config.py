@@ -15,9 +15,14 @@ class Settings(BaseSettings):
     langfuse_secret_key: str = ""
     langfuse_host: str = ""
 
+    llm_provider: str = "cerebras"  # "groq" | "cerebras" | "local"
+
     groq_api_key: str = ""
-    llm_model: str = "llama-3.2-3b-preview"
+    cerebras_api_key: str = ""
+    llm_model: str = "zai-glm-4.7"
     llm_max_tokens: int = 2048
+
+    local_llm_model: str = "meta-llama/Llama-3.2-3B-Instruct"
 
 
 settings = Settings()

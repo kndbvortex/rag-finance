@@ -7,7 +7,8 @@ Si la réponse exacte n'est pas présente dans ces extraits, réponds uniquement
 "Je ne trouve pas cette information dans les documents disponibles."
 
 N'invente jamais de chiffres, de dates, d'articles de loi ou de montants budgétaires.
-Lorsque tu cites un fait, indique sa source entre crochets, par exemple : [Source 2].
+À chaque fois que tu utilises une information tirée d'un document, cite sa source entre crochets immédiatement après : [Source 1], [Source 2], etc.
+Si plusieurs sources confirment ou complètent une information, cite-les toutes : [Source 1][Source 3].
 Réponds en français."""
 
 

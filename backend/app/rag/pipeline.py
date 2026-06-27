@@ -1,5 +1,6 @@
 import asyncio
 import json
+import threading
 import time
 from collections.abc import AsyncGenerator
 
@@ -12,18 +13,47 @@ from app.rag.prompt import SYSTEM_PROMPT, build_user_message
 from app.search.hybrid import SearchResult, hybrid_search
 from app.search.reranker import rerank
 
-_GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+if settings.llm_provider == "local":
+    from app.rag.local_llm import stream_local
+
+_PROVIDER_URLS = {
+    "groq": "https://api.groq.com/openai/v1/chat/completions",
+    "cerebras": "https://api.cerebras.ai/v1/chat/completions",
+}
 
 
 def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-async def _stream_groq(system: str, user: str) -> AsyncGenerator[str, None]:
-    headers = {
-        "Authorization": f"Bearer {settings.groq_api_key}",
-        "Content-Type": "application/json",
-    }
+async def _stream_local_async(system: str, user: str) -> AsyncGenerator[str, None]:
+    loop = asyncio.get_event_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def _run():
+        try:
+            for token in stream_local(system, user):
+                loop.call_soon_threadsafe(queue.put_nowait, token)
+        except Exception as exc:
+            loop.call_soon_threadsafe(queue.put_nowait, exc)
+        finally:
+            loop.call_soon_threadsafe(queue.put_nowait, None)
+
+    threading.Thread(target=_run, daemon=True).start()
+    while True:
+        item = await queue.get()
+        if item is None:
+            break
+        if isinstance(item, Exception):
+            raise item
+        yield item
+
+
+async def _stream_cloud(system: str, user: str) -> AsyncGenerator[str, None]:
+    provider = settings.llm_provider
+    url = _PROVIDER_URLS[provider]
+    api_key = settings.cerebras_api_key if provider == "cerebras" else settings.groq_api_key
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload = {
         "model": settings.llm_model,
         "messages": [
@@ -34,10 +64,10 @@ async def _stream_groq(system: str, user: str) -> AsyncGenerator[str, None]:
         "max_tokens": settings.llm_max_tokens,
     }
     async with httpx.AsyncClient(timeout=60.0) as client:
-        async with client.stream("POST", _GROQ_URL, headers=headers, json=payload) as response:
+        async with client.stream("POST", url, headers=headers, json=payload) as response:
             if response.status_code >= 400:
                 body = await response.aread()
-                raise RuntimeError(f"Groq {response.status_code}: {body.decode()}")
+                raise RuntimeError(f"{provider} {response.status_code}: {body.decode()}")
             async for line in response.aiter_lines():
                 if not line.startswith("data: ") or line == "data: [DONE]":
                     continue
@@ -119,9 +149,25 @@ async def rag_stream(question: str) -> AsyncGenerator[str, None]:
     t0 = time.perf_counter()
     full_answer: list[str] = []
 
-    async for token in _stream_groq(SYSTEM_PROMPT, user_message):
-        full_answer.append(token)
-        yield _sse({"type": "token", "content": token})
+    try:
+        stream = (
+            _stream_local_async(SYSTEM_PROMPT, user_message)
+            if settings.llm_provider == "local"
+            else _stream_cloud(SYSTEM_PROMPT, user_message)
+        )
+        async for token in stream:
+            full_answer.append(token)
+            yield _sse({"type": "token", "content": token})
+    except RuntimeError as exc:
+        err = str(exc)
+        if "429" in err:
+            msg = "Limite de tokens atteinte (Groq). Réessayez dans quelques minutes."
+        elif "401" in err:
+            msg = "Clé API Groq invalide ou expirée."
+        else:
+            msg = f"Erreur lors de la génération : {err}"
+        yield _sse({"type": "error", "message": msg})
+        return
 
     llm_latency = time.perf_counter() - t0
     answer_text = "".join(full_answer)
@@ -142,8 +188,11 @@ async def rag_stream(question: str) -> AsyncGenerator[str, None]:
             "type_document": s.type_document,
             "annee_fiscale": s.annee_fiscale,
             "url": s.url_origine,
+            "url_hash": s.url_hash,
             "contient_tableaux": s.contient_tableaux,
             "content": s.content,
+            "page_start": s.page_start,
+            "page_end": s.page_end,
         }
         for i, s in enumerate(sources, 1)
     ]
